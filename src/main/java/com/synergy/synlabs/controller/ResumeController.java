@@ -37,11 +37,13 @@ public class ResumeController {
             return ResponseEntity.ok(response);
         } catch (IOException e) {
             Map<String, Object> response = new HashMap<>();
-            response.put("error", "File upload failed: " + e.getMessage());
+            String msg = e.getMessage();
+            response.put("error", msg != null ? ("File upload failed: " + msg) : "File upload failed");
             return ResponseEntity.badRequest().body(response);
         } catch (Exception e) {
             Map<String, Object> response = new HashMap<>();
-            response.put("error", e.getMessage());
+            String msg = e.getMessage();
+            response.put("error", msg != null ? msg : "Bad request");
             return ResponseEntity.badRequest().body(response);
         }
     }

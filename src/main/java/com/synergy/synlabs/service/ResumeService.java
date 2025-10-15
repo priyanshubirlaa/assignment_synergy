@@ -88,39 +88,60 @@ public class ResumeService {
         
         if (parseResponse.getExperience() != null) {
             profile.setExperience(parseResponse.getExperience().stream()
-                    .map(exp -> exp.getName() + " (" + String.join(", ", exp.getDates()) + ")")
-                    .collect(Collectors.joining(", ")));
+                    .map(exp -> {
+                        String name = exp.getName() != null ? exp.getName() : "";
+                        java.util.List<String> dates = exp.getDates() != null ? exp.getDates() : java.util.Collections.emptyList();
+                        String datesStr = String.join(", ", dates);
+                        return datesStr.isEmpty() ? name : (name + " (" + datesStr + ")");
+                    })
+                    .collect(java.util.stream.Collectors.joining(", ")));
         }
         
         return profileRepository.save(profile);
     }
     
-    private ResumeParseResponse parseResume(MultipartFile file) {
+    private ResumeParseResponse parseResume(MultipartFile file) throws IOException {
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.set("apikey", apiKey);
             headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
-            
-            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-            body.add("file", new ByteArrayResource(file.getBytes()) {
+            headers.setAccept(java.util.List.of(MediaType.APPLICATION_JSON));
+
+            ByteArrayResource resource = new ByteArrayResource(file.getBytes()) {
                 @Override
                 public String getFilename() {
                     return file.getOriginalFilename();
                 }
-            });
-            
-            HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
-            
-            ResumeParseResponse response = restTemplate.postForObject(apiUrl, requestEntity, ResumeParseResponse.class);
-            
-            if (response == null) {
-                throw new RuntimeException("Failed to parse resume");
+            };
+
+            HttpEntity<ByteArrayResource> requestEntity = new HttpEntity<>(resource, headers);
+
+            try {
+                ResumeParseResponse response = restTemplate.postForObject(
+                        apiUrl,
+                        requestEntity,
+                        ResumeParseResponse.class
+                );
+
+                if (response == null) {
+                    throw new RuntimeException("Failed to parse resume");
+                }
+
+                return response;
+            } catch (org.springframework.web.client.HttpClientErrorException e) {
+                String body = e.getResponseBodyAsString();
+                log.error("Resume API 4xx: status={} body={}", e.getStatusCode(), body);
+                throw new RuntimeException("Failed to parse resume: " + body);
+            } catch (org.springframework.web.client.HttpServerErrorException e) {
+                String body = e.getResponseBodyAsString();
+                log.error("Resume API 5xx: status={} body={}", e.getStatusCode(), body);
+                throw new RuntimeException("Resume service unavailable: " + body);
+            } catch (Exception e) {
+                log.error("Error parsing resume: {}", e.getMessage());
+                throw new RuntimeException("Failed to parse resume: " + e.getMessage());
             }
-            
-            return response;
-        } catch (Exception e) {
-            log.error("Error parsing resume: {}", e.getMessage());
-            throw new RuntimeException("Failed to parse resume: " + e.getMessage());
+        } finally {
+            // Any cleanup code if needed in future
         }
     }
     
